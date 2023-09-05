@@ -1,20 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StatusBar, ScrollView, StyleSheet, TouchableOpacity, TextInput, BackHandler, Image } from 'react-native';
+import { View, Text, StatusBar, ScrollView, StyleSheet, TouchableOpacity, Linking, TextInput, BackHandler, Image } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios'; // Axios 라이브러리 import
 
+const saveButtonState = async (isEnabled) => {
+  try {
+    await AsyncStorage.setItem('buttonEnabled', isEnabled.toString());
+  } catch (error) {
+    console.error('오류 발생:', error);
+  }
+};
 
-const MainScreen = ({ onLogin, onSignUp }) => {
+const getButtonState = async () => {
+  try {
+    const buttonEnabled = await AsyncStorage.getItem('buttonEnabled');
+    return buttonEnabled === 'true';
+  } catch (error) {
+    console.error('오류 발생:', error);
+    return false;
+  }
+};
+
+
+
+const MainScreen = ({ onLogin, onSignUp }) => { //로그인 화면
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isSignUpMode, setIsSignUpMode] = useState(false); // 추가
+  const [isSignUpMode, setIsSignUpMode] = useState(false); 
 
-  const handleLogin = () => {
+  const handleLogin = () => { //로그인 테스트용
     if (username === 'user' && password === 'password') {
       onLogin();
     } else {
       alert('로그인 실패');
     }
   };
+
+  // 아래가 만든 로그인 로직인데... 제대로 안돌아간다
+
+
+
 
   // const handleLogin = async () => {
   //   try {
@@ -31,7 +56,9 @@ const MainScreen = ({ onLogin, onSignUp }) => {
   //   }
   // };
 
-  const handleSignUp = async () => {
+
+
+  const handleSignUp = async () => {// 회원가입로직인데,,,마찬가지이다.
     try {
       const response = await axios.post('http://localhost:8080/api/user/', { username, password });
       
@@ -98,7 +125,7 @@ const MainScreen = ({ onLogin, onSignUp }) => {
   );
 };
 
-const Stopwatch = ({onStop, onRecord}) => {
+const Stopwatch = ({onStop, onRecord}) => {//스톱워치
   const [running, setRunning] = useState(false);
   const [time, setTime] = useState(0);
   const [intervalId, setIntervalId] = useState(null);
@@ -121,6 +148,7 @@ const Stopwatch = ({onStop, onRecord}) => {
     }
     setRunning(!running);
   };
+
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       onStop();
@@ -133,14 +161,15 @@ const Stopwatch = ({onStop, onRecord}) => {
     };
   }, [intervalId, onStop]);
 
-  const formatTime = (milliseconds) => {
+
+  const formatTime = (milliseconds) => {// 스톱워치 기록 시간
     const totalSeconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    const ms = (milliseconds / 10 % 100 % 99).toFixed(0); 
+    const ms = (milliseconds / 10 % 100 % 99).toFixed(0); // %100으로 하니 가끔 밀리초가 100가 되는경우생김
     //const ms = Math.floor(milliseconds % 1000 / 10);
 
-    const formattedMinutes = minutes.toString().padStart(2, '0');
+    const formattedMinutes = minutes.toString().padStart(2, '0');// 자릿수 맞추기
     const formattedSeconds = seconds.toString().padStart(2, '0');
     const formattedms = ms.toString().padStart(2, '0');
     return `${formattedMinutes} : ${formattedSeconds} : ${formattedms}`;
@@ -154,7 +183,7 @@ const Stopwatch = ({onStop, onRecord}) => {
         onPress={handleToggle}
       >
         <Text style={styles.stopwatchButtonText}>
-          {running ? 'STOP' : 'START'}
+          {running ? 'STOP' : 'START'/*추후 stop 을 누르면 reset 과 record 버튼으로 나누는 기능 추가?*/}
         </Text>
       </TouchableOpacity>
     </View>
@@ -167,24 +196,94 @@ const App = () => {
   const [loggedIn, setLoggedIn] = useState(false);
   const [screen, setScreen] = useState('Home');
   const [stopwatchRecords, setStopwatchRecords] = useState([]);
+  const [isEnabled, setIsEnabled] = useState(true);
+  const [RecordTop, setRecordTop] = useState([]);
+  const [RecordBottom, setRecordBottom] = useState([]);
+  
 
 
-  const handleRecord = (record) => {
-    setStopwatchRecords(prevRecords => [...prevRecords, record]);
+
+
+
+  const firstRunDate = new Date('2023-09-01'); // 예시로 설정
+
+  const getCurrentDate = () => {
+    return new Date();
+  };
+
+  const calculateDayN = () => {
+    const currentDate = getCurrentDate();
+    const timeDifference = currentDate - firstRunDate;
+    const dayN = Math.ceil(timeDifference / (1000 * 60 * 60 * 24)); // 24시간 = 1일
+    return dayN + 1; 
+  };
+  const [dayN, setDayN] = useState(calculateDayN());
+
+
+  useEffect(() => {
+    // 1분마다 Day N을 업데이트
+    const interval = setInterval(() => {
+      setDayN(calculateDayN());
+    }, 60 * 1000); // 1분마다 업데이트
+
+    return () => clearInterval(interval);
+  }, []);
+
+
+  const openSurvey = async () => {
+      if (isEnabled) {
+        // 버튼이 활성화된 경우
+        setIsEnabled(false); // 버튼 비활성화
+        await saveButtonState(false);
+  
+        // URL로 이동
+        Linking.openURL('https://docs.google.com/forms/d/e/1FAIpQLSeC2el0xVkleIVe6jKK_ir2xLUx8BMoLtS559VtkWrPiWzSfQ/viewform');
+        
+        // 1일(24시간) 뒤에 버튼을 다시 활성화.. 를 하려했는데 비활성화는 안된다. URL 은정상적으로 돌아감
+        setTimeout(async () => {
+          setIsEnabled(true);
+          await saveButtonState(true);
+        }, 24 * 60 * 60 * 1000); // 24시간(ms 단위)
+      } else {
+        // 버튼이 비활성화된 경우
+        Linking.openURL('https://docs.google.com/forms/d/1EEoGtVf-zoXR59wv7zEh4h0YVjJZo2I21ytkfXIaxBg/edit');
+      }
   };
 
 
-  const handleSignUpComplete = () => {
+
+
+
+
+
+  const CubeBest = () => {
+    setScreen('CubeBestScreen');
+  };
+  const StacksBest = () => {
+    setScreen('StacksBestScreen');
+  };
+
+
+  const handleRecord = (record) => {//스톱워치 각자 기록
+    if (screen === 'TopScreen') {
+      setRecordTop([...RecordTop, record]);
+    } else if (screen === 'BottomScreen') {
+      setRecordBottom([...RecordBottom, record]);
+    }  
+  };
+
+
+  const handleSignUpComplete = () => {//회원가입완료 필요한가?
     setLoggedIn(true);
   };
 
 
 
-  const handleLogin = () => {
+  const handleLogin = () => {//로그인완료
     setLoggedIn(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = () => {//로그아웃 필요한가
     setLoggedIn(false);
     setScreen('Home');
   };
@@ -214,13 +313,13 @@ const App = () => {
   const month = d.getMonth() + 1; 
   const day = d.getDate();
 
-
+  //DAY n 을 위해 날짜 받아주기?
 
 
   
 
   const renderScreen = () => {
-    if (screen === 'Home') {
+    if (screen === 'Home') {//로그인후 홈화면
       return (
         <View style={styles.container}>
           <TouchableOpacity style={styles.topHalf} onPress={handleTouchTop} >
@@ -231,7 +330,44 @@ const App = () => {
                 </TouchableOpacity>   
         </View>
       );
-    } else if (screen === 'TopScreen' ) {
+    } else if (screen === 'TopScreen' ) {//cube 
+      return (
+        <View style={styles.container}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => setScreen('Home')}
+          >
+            <Text style={styles.backButtonText}> Back </Text>
+          </TouchableOpacity>
+
+          <View style={styles.container} backgroundColor ='#FFE4C4'>
+            <Text style={styles.header}>{month}월 {day}일 (Day {dayN})</Text>
+            <Stopwatch onRecord={handleRecord} style={alignItems= 'center'} />
+          </View>
+          <TouchableOpacity
+            style={styles.CubeBestButton}
+            onPress={CubeBest}
+          >
+            <Text style={styles.CubeBestButtonText}> Best </Text>
+          </TouchableOpacity>
+
+            <View style={styles.second_container} backgroundColor = '#FFE4B5'>
+
+            <ScrollView style={styles.second_container} backgroundColor = '#DEB887'>
+              <Text style={styles.header}>스탑워치</Text>
+                {RecordTop.map((record, index) => (
+                  <Text key={index} style={styles.header}>
+                    Day {dayN} {record} 
+                  </Text>
+                ))}
+            
+            </ScrollView>
+            </View>
+
+        </View>
+      );
+    }
+    else if ( screen === 'BottomScreen') {//stacks
       return (
         <View style={styles.container}>
           <TouchableOpacity
@@ -242,17 +378,23 @@ const App = () => {
             </TouchableOpacity>
 
           <View style={styles.container} backgroundColor ='#FFE4C4'>
-            <Text style={styles.header}>{year}년 {month}월 {day}일</Text>
+            <Text style={styles.header}>{month}월 {day}일 (Day {dayN})</Text>
             <Stopwatch onRecord={handleRecord} style={alignItems= 'center'} />
-  
-            </View>
+
+          </View>
+          <TouchableOpacity
+            style={styles.StacksBestButton}
+            onPress={StacksBest}
+          >
+            <Text style={styles.StacksBestButtonText}> Best </Text>
+          </TouchableOpacity>
             <View style={styles.second_container} backgroundColor = '#FFE4B5'>
 
             <ScrollView style={styles.second_container} backgroundColor = '#DEB887'>
               <Text style={styles.header}>스탑워치</Text>
-                {stopwatchRecords.map((record, index) => (
+                {RecordBottom.map((record, index) => (
                   <Text key={index} style={styles.header}>
-                    {record} Cube
+                    Day {dayN} {record}
                   </Text>
                 ))}
             
@@ -262,37 +404,79 @@ const App = () => {
         </View>
       );
     }
-    else if ( screen === 'BottomScreen') {
+    else if ( screen == 'CubeBestScreen'){//cube 최고기록
       return (
         <View style={styles.container}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => setScreen('Home')}
-          >
+            onPress={() => setScreen('TopScreen')}
+            >
             <Text style={styles.backButtonText}> Back </Text>
-            </TouchableOpacity>
-
+          </TouchableOpacity>
           <View style={styles.container} backgroundColor ='#FFE4C4'>
-            <Text style={styles.header}>{year}년 {month}월 {day}일</Text>
-            <Stopwatch onRecord={handleRecord} style={alignItems= 'center'} />
-  
-            </View>
-            <View style={styles.second_container} backgroundColor = '#FFE4B5'>
+            <Text style={styles.header}>{month}월 {day}일 (Day {dayN})</Text>
+          </View>
 
-            <ScrollView style={styles.second_container} backgroundColor = '#DEB887'>
+          <View style={styles.best_container} backgroundColor = '#FFE4B5'>
+
+            <ScrollView style={styles.best_container} backgroundColor = '#DEB887'>
               <Text style={styles.header}>스탑워치</Text>
-                {stopwatchRecords.map((record, index) => (
-                  <Text key={index} style={styles.header}>
-                    {record}
-                  </Text>
-                ))}
-            
+              {RecordTop.map((record, index) => (
+                <Text key={index} style={styles.header}>
+                  {/* 9월 1일           {record} */}
+                  Day {dayN} {record}
+                </Text>
+              ))}
+
             </ScrollView>
-            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.ReviewButton}
+            onPress={openSurvey}
+            >
+            <Text style={styles.ReviewButtonText}> 설문조사 </Text>
+          </TouchableOpacity>
 
         </View>
       );
     }
+    else if (screen == 'StacksBestScreen'){//stacks 최고기록
+      return (
+        <View style={styles.container}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => setScreen('BottomScreen')}
+          >
+          <Text style={styles.backButtonText}> Back </Text>
+        </TouchableOpacity>
+        <View style={styles.container} backgroundColor ='#FFE4C4'>
+          <Text style={styles.header}>{month}월 {day}일 (Day {dayN})</Text>
+        </View>
+
+        <View style={styles.best_container} backgroundColor = '#FFE4B5'>
+
+          <ScrollView style={styles.best_container} backgroundColor = '#DEB887'>
+          <Text style={styles.header}>스탑워치</Text>
+            {RecordBottom.map((record, index) => (
+            <Text key={index} style={styles.header}>
+             {/* 9월 1일           {record} */}
+             Day {dayN} {record}
+            </Text>
+            ))}
+
+          </ScrollView>
+        </View>
+        <TouchableOpacity
+          style={styles.ReviewButton}
+          onPress={openSurvey}
+          >
+          <Text style={styles.ReviewButtonText}> 설문조사 </Text>
+        </TouchableOpacity>
+
+        </View>
+      );
+    }
+
   };
   
   return (
@@ -316,6 +500,9 @@ const styles = StyleSheet.create({
   },
   second_container: {
     flex: 3,
+  },
+  best_container: {
+    flex: 15,
   },
   topHalf: {
     flex: 1,
@@ -350,6 +537,30 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: 'white',
   },
+  CubeBestButton: {
+    position: 'absolute',
+    right: 0, 
+    backgroundColor: 'blue',
+    padding: 8,
+    borderRadius: 5,
+    zIndex: 1,
+  },
+  CubeBestButtonText: {
+    fontSize: 20,
+    color: 'white',
+  },
+  StacksBestButton: {
+    position: 'absolute',
+    right: 0,
+    backgroundColor: 'blue',
+    padding: 8,
+    borderRadius: 5,
+    zIndex: 1,
+  },
+  StacksBestButtonText: {
+    fontSize: 20,
+    color: 'white',
+  },
   stopwatchContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -363,9 +574,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'lightgray',
     padding: 10,
     borderRadius: 5,
+    width: 380,
+    justifyContent: 'center',
+    alignItems: 'center', 
+    bottom: 10, 
   },
   stopwatchButtonText: {
-    fontSize: 16,
+    fontSize: 18,
+
   },
   loginContainer: {
     flex: 1,
@@ -393,10 +609,13 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     borderColor: 'white',
     borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center', 
+    width: 320,
   },
   loginButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
   },    
   signupButton: {
     backgroundColor: 'blue',
@@ -405,11 +624,13 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     borderColor: 'white',
     borderWidth: 1,
-
+    justifyContent: 'center',
+    alignItems: 'center', 
+    width: 320,
   },
   signupButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 18,
   },  
 
   stopwatchValue: {
@@ -417,6 +638,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginVertical: 20,
   },
+  ReviewButton: {
+    position: 'absolute',
+    right: 0,
+    backgroundColor: 'blue',
+    padding: 8,
+    borderRadius: 5,
+    zIndex: 1,
+    height: 43,
+    width: 90,
+    disabled: true,
+  },
+  ReviewButtonText: {
+    fontSize: 18,
+    color: 'white',
+  },
+  ReviewdisabledButton:{
+    backgroundColor: 'gray', // 비활성화된 상태의 스타일
+  }
 });
 
 export default App;
