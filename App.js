@@ -129,17 +129,35 @@ const Stopwatch = ({onStop, onRecord}) => {//스톱워치
   const [running, setRunning] = useState(false);
   const [time, setTime] = useState(0);
   const [intervalId, setIntervalId] = useState(null);
+  const [bestTime, setBestTime] = useState(null);
+
+
+
+  const loadBestTime = async () => {
+    try {
+      const savedBestTime = await AsyncStorage.getItem('bestTime');
+      if (savedBestTime) {
+        setBestTime(Number(savedBestTime));
+      }
+    } catch (error) {
+      console.error('Error loading best time from AsyncStorage:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadBestTime();
+  }, []);
 
   const handleToggle = () => {
     if (running) {
       clearInterval(intervalId);
       if (time > 0) {
         onRecord(formatTime(time)); // 레코드 추가
+        if (!bestTime || time < bestTime) saveBestTime(time); // 새로운 최고 기록 업데이트  
       }
       setTime(0);
     } else {
       setTime(0);
-     // const today = new Date();
       const startTime = Date.now() - time;
       const id = setInterval(() => {
         setTime(Date.now() - startTime);
@@ -148,6 +166,17 @@ const Stopwatch = ({onStop, onRecord}) => {//스톱워치
     }
     setRunning(!running);
   };
+
+
+  const saveBestTime = async (time) => {
+    try {
+      await AsyncStorage.setItem('bestTime', String(time));
+      setBestTime(time);
+    } catch (error) {
+      console.error('Error saving best time to AsyncStorage:', error);
+    }
+  };
+
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -178,6 +207,9 @@ const Stopwatch = ({onStop, onRecord}) => {//스톱워치
   return (
     <View style={styles.stopwatchContainer}>
       <Text style={styles.stopwatchText}>{formatTime(time)}</Text>
+      {bestTime !== null && (
+        <Text>오늘 최고 기록: {formatTime(bestTime)}</Text>
+      )}      
       <TouchableOpacity
         style={styles.stopwatchButton}
         onPress={handleToggle}
@@ -199,35 +231,94 @@ const App = () => {
   const [isEnabled, setIsEnabled] = useState(true);
   const [RecordTop, setRecordTop] = useState([]);
   const [RecordBottom, setRecordBottom] = useState([]);
-  
-
-
-
-
-
-  const firstRunDate = new Date('2023-09-01'); // 예시로 설정
-
-  const getCurrentDate = () => {
-    return new Date();
-  };
-
-  const calculateDayN = () => {
-    const currentDate = getCurrentDate();
-    const timeDifference = currentDate - firstRunDate;
-    const dayN = Math.ceil(timeDifference / (1000 * 60 * 60 * 24)); // 24시간 = 1일
-    return dayN + 1; 
-  };
-  const [dayN, setDayN] = useState(calculateDayN());
+  const [firstRunDate, setFirstRunDate] = useState(null);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [bestTime, setBestTime] = useState(null);
+  const [recordedTimes, setRecordedTimes] = useState([]);
 
 
   useEffect(() => {
-    // 1분마다 Day N을 업데이트
-    const interval = setInterval(() => {
-      setDayN(calculateDayN());
-    }, 60 * 1000); // 1분마다 업데이트
-
-    return () => clearInterval(interval);
+    // 최초 실행 시 AsyncStorage에서 bestTime을 읽어옵니다.
+    AsyncStorage.getItem('bestTime')
+      .then((value) => {
+        if (value) {
+          setBestTime(Number(value));
+        }
+      })
+      .catch((error) => {
+        console.error('Error reading bestTime from AsyncStorage: ', error);
+      });
   }, []);
+
+  const resetBestTimeDaily = () => {
+    // 새로운 하루의 기록을 시작하기 전에 이전 기록을 저장
+    if (bestTime !== null) {
+      setRecordedTimes([...recordedTimes, bestTime]);
+    }
+
+    // 초기화된 bestTime을 저장하고 초기화
+    setBestTime(null);
+    AsyncStorage.setItem('bestTime', String(Date.now()));
+  };
+
+  useEffect(() => {//테스트용 1분주기 코드
+    const timer = setInterval(() => {
+      resetBestTimeDaily();
+    }, 60 * 1000); 
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+    // useEffect(() => {//1일주기 코드
+    //   const now = new Date();
+    //   const tomorrow = new Date(now);
+    //   tomorrow.setDate(tomorrow.getDate() + 1);
+    //   tomorrow.setHours(0, 0, 0, 0);
+    //   const timeUntilMidnight = tomorrow - now;
+    
+    //   const timer = setInterval(() => {
+    //     resetBestTimeDaily();
+    //   }, timeUntilMidnight);    
+    //   return () => {
+    //     clearInterval(timer);
+    //   };
+    // }, []);
+
+
+  useEffect(() => {
+    // AsyncStorage에서 최초 실행 날짜를 읽어옵니다.
+    AsyncStorage.getItem('firstRunDate')
+      .then((value) => {
+        if (value) {
+          setFirstRunDate(new Date(value));
+        } else {
+          // 최초 실행 날짜가 없으면 현재 날짜를 저장합니다.
+          const now = new Date();
+          AsyncStorage.setItem('firstRunDate', now.toISOString());
+          setFirstRunDate(now);
+        }
+      })
+      .catch((error) => {
+        console.error('Error reading firstRunDate from AsyncStorage: ', error);
+      });
+  }, []);
+
+  // 최초 실행 날짜와 현재 날짜의 차를 계산합니다.
+  const differenceInDays = () => {
+    if (firstRunDate) {
+      const diffTime = Math.abs(currentDate - firstRunDate);
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+    return 0;
+  };
+
+
+
+
+
+
 
 
   const openSurvey = async () => {
@@ -341,7 +432,7 @@ const App = () => {
           </TouchableOpacity>
 
           <View style={styles.container} backgroundColor ='#FFE4C4'>
-            <Text style={styles.header}>{month}월 {day}일 (Day {dayN})</Text>
+            <Text style={styles.header}>{month}월 {day}일 (Day {differenceInDays()})</Text>
             <Stopwatch onRecord={handleRecord} style={alignItems= 'center'} />
           </View>
           <TouchableOpacity
@@ -354,13 +445,13 @@ const App = () => {
             <View style={styles.second_container} backgroundColor = '#FFE4B5'>
 
             <ScrollView style={styles.second_container} backgroundColor = '#DEB887'>
-              <Text style={styles.header}>스탑워치</Text>
+              <Text style={styles.header}>CUBE RECORD</Text>
                 {RecordTop.map((record, index) => (
                   <Text key={index} style={styles.header}>
-                    Day {dayN} {record} 
+                    Day {differenceInDays()}           {record} 
                   </Text>
                 ))}
-            
+              
             </ScrollView>
             </View>
 
@@ -378,7 +469,7 @@ const App = () => {
             </TouchableOpacity>
 
           <View style={styles.container} backgroundColor ='#FFE4C4'>
-            <Text style={styles.header}>{month}월 {day}일 (Day {dayN})</Text>
+            <Text style={styles.header}>{month}월 {day}일 (Day {differenceInDays()})</Text>
             <Stopwatch onRecord={handleRecord} style={alignItems= 'center'} />
 
           </View>
@@ -391,10 +482,10 @@ const App = () => {
             <View style={styles.second_container} backgroundColor = '#FFE4B5'>
 
             <ScrollView style={styles.second_container} backgroundColor = '#DEB887'>
-              <Text style={styles.header}>스탑워치</Text>
+              <Text style={styles.header}>STACKS RECORD</Text>
                 {RecordBottom.map((record, index) => (
                   <Text key={index} style={styles.header}>
-                    Day {dayN} {record}
+                    Day {differenceInDays()}           {record}
                   </Text>
                 ))}
             
@@ -414,19 +505,40 @@ const App = () => {
             <Text style={styles.backButtonText}> Back </Text>
           </TouchableOpacity>
           <View style={styles.container} backgroundColor ='#FFE4C4'>
-            <Text style={styles.header}>{month}월 {day}일 (Day {dayN})</Text>
+            <Text style={styles.header}>{month}월 {day}일 (Day {differenceInDays()})</Text>
           </View>
 
           <View style={styles.best_container} backgroundColor = '#FFE4B5'>
 
             <ScrollView style={styles.best_container} backgroundColor = '#DEB887'>
-              <Text style={styles.header}>스탑워치</Text>
-              {RecordTop.map((record, index) => (
+              <Text style={styles.header}>CUBE RECORD</Text>
+              {/* {RecordTop.map((record, index) => (
                 <Text key={index} style={styles.header}>
-                  {/* 9월 1일           {record} */}
-                  Day {dayN} {record}
+                  Day {differenceInDays()}           {record}
                 </Text>
-              ))}
+                
+              ))} */}
+          <View>
+            {bestTime !== null ? (
+            <Text style={styles.header}>최고 기록: {bestTime}</Text>
+              ) : (
+            <Text>아직 최고 기록이 없습니다.</Text>
+           )}
+
+            {/* 누적된 기록을 표시하기 위한 FlatList */}
+            {recordedTimes.length > 0 && (
+            <View>
+              <Text>누적 기록:</Text>
+              <FlatList
+              data={recordedTimes.reverse()}
+              renderItem={({ item }) => (
+              <Text>{item}</Text>
+            )}
+            keyExtractor={(item, index) => index.toString()}
+              />
+            </View>
+      )}
+    </View>
 
             </ScrollView>
           </View>
@@ -450,17 +562,17 @@ const App = () => {
           <Text style={styles.backButtonText}> Back </Text>
         </TouchableOpacity>
         <View style={styles.container} backgroundColor ='#FFE4C4'>
-          <Text style={styles.header}>{month}월 {day}일 (Day {dayN})</Text>
+          <Text style={styles.header}>{month}월 {day}일 (Day {differenceInDays()})</Text>
         </View>
 
         <View style={styles.best_container} backgroundColor = '#FFE4B5'>
 
           <ScrollView style={styles.best_container} backgroundColor = '#DEB887'>
-          <Text style={styles.header}>스탑워치</Text>
+          <Text style={styles.header}>STACKS RECORD</Text>
             {RecordBottom.map((record, index) => (
             <Text key={index} style={styles.header}>
              {/* 9월 1일           {record} */}
-             Day {dayN} {record}
+             Day {differenceInDays()}           {record}
             </Text>
             ))}
 
@@ -499,7 +611,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
   },
   second_container: {
-    flex: 3,
+    flex: 1,
   },
   best_container: {
     flex: 15,
@@ -568,19 +680,19 @@ const styles = StyleSheet.create({
   },
   stopwatchText: {
     fontSize: 60,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   stopwatchButton: {
     backgroundColor: 'lightgray',
-    padding: 10,
+    padding: 80,
     borderRadius: 5,
     width: 380,
     justifyContent: 'center',
     alignItems: 'center', 
-    bottom: 10, 
+    bottom: 0, 
   },
   stopwatchButtonText: {
-    fontSize: 18,
+    fontSize: 50,
 
   },
   loginContainer: {
